@@ -71,6 +71,8 @@ class ActionModule(ActionBase):
     def _process_remote(self, host, path, user):
         transport = self._play_context.connection
         if host not in C.LOCALHOST or transport != "local":
+            if host in C.LOCALHOST:
+                self._task.args['_substitute_controller'] = True
             return self._format_rsync_rsh_target(host, path, user)
 
         if ':' not in path and not path.startswith('/'):
@@ -166,7 +168,7 @@ class ActionModule(ActionBase):
         # host rsync puts the files on.  This is about *rsync's connection*,
         # not about the ansible connection to run the module.
         dest_is_local = False
-        if not delegate_to and dest_host in C.LOCALHOST:
+        if not delegate_to and remote_transport is False:
             dest_is_local = True
         elif delegate_to and delegate_to == dest_host:
             dest_is_local = True
@@ -194,22 +196,12 @@ class ActionModule(ActionBase):
         # Delegate to localhost as the source of the rsync unless we've been
         # told (via delegate_to) that a different host is the source of the
         # rsync
-        transport_overridden = False
         if not use_delegate and remote_transport:
             # Create a connection to localhost to run rsync on
             new_stdin = self._connection._new_stdin
             new_connection = connection_loader.get('local', self._play_context, new_stdin)
             self._connection = new_connection
-            transport_overridden = True
             self._override_module_replaced_vars(task_vars)
-
-        # COMPARE DELEGATE, HOST AND TRANSPORT
-        between_multiple_hosts = False
-        if dest_host != src_host and remote_transport:
-            # We're not copying two filesystem trees on the same host so we
-            # need to correctly format the paths for rsync (like
-            # user@host:path/to/tree
-            between_multiple_hosts = True
 
         # SWITCH SRC AND DEST HOST PER MODE
         if self._task.args.get('mode', 'push') == 'pull':
@@ -218,7 +210,7 @@ class ActionModule(ActionBase):
         # MUNGE SRC AND DEST PER REMOTE_HOST INFO
         src = self._task.args.get('src', None)
         dest = self._task.args.get('dest', None)
-        if between_multiple_hosts:
+        if not dest_is_local:
             # Private key handling
             if use_delegate:
                 private_key = task_vars.get('ansible_ssh_private_key_file') or self._play_context.private_key_file
@@ -287,7 +279,7 @@ class ActionModule(ActionBase):
         # run the module and store the result
         result.update(self._execute_module('synchronize', task_vars=task_vars))
 
-        if 'SyntaxError' in result['msg']:
+        if 'SyntaxError' in result.get('exception', result.get('msg', '')):
             # Emit a warning about using python3 because synchronize is
             # somewhat unique in running on localhost
             result['traceback'] = result['msg']
