@@ -505,6 +505,9 @@ class ActionBase(with_metaclass(ABCMeta, object)):
             replacement strategy (python3 could use surrogateescape)
         '''
 
+        if self._play_context.become_method == 'su':
+            executable = None
+
         if executable is not None:
             cmd = executable + ' -c ' + pipes.quote(cmd)
 
