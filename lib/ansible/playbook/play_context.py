@@ -512,7 +512,7 @@ class PlayContext(Base):
             self.success_key = success_key
             return ('%s -c %s' % (executable, pipes.quote(becomecmd)))
 
-        return cmd
+        return pipes.quote(cmd)
 
     def update_vars(self, variables):
         '''
